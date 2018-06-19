@@ -1,0 +1,164 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <title>Quiz Cards</title>
+    
+    <script>
+
+const queues = [[], [], [], []]; // for now: [pending, short, long, done]
+const shortQueueLength = 5;
+const longReviewChance = 1/20;
+const cardPullDepth = 3;
+const csvColSep = "	";
+const csvRowSep = "\n";
+const hintColumnName = "hintwords";
+const answerColumnName = "kanji"
+let card = null;
+let queueOfCard = null;
+let answerShown = false;
+let autoDraw = true; // after mark, immediately draw a card
+
+document.addEventListener("DOMContentLoaded", (e) => {
+  console.log("loaded");
+  
+  document.getElementById("btdraw").addEventListener("click", (e) => drawCard());
+  document.getElementById("btshow").addEventListener("click", (e) => showAnswer());
+  document.getElementById("btmarkwrong").addEventListener("click", (e) => markCard(-1));
+  document.getElementById("btmarknomove").addEventListener("click", (e) => markCard(0));
+  document.getElementById("btmarkgood").addEventListener("click", (e) => markCard(1));
+  document.getElementById("btadddata").addEventListener("click", (e) => addDataFromTextArea());
+  
+  document.body.addEventListener("keydown", (e) => {
+    if (e.key === "z") { showAnswer(); }
+    if (e.key === "x") { markCard(-1); }
+    if (e.key === "c") { markCard(1); }
+  });
+  
+  refreshUI();
+});
+
+function refillShortQueue() {
+  while (queues[1].length < shortQueueLength && queues[0].length > 0) {
+    const movingCard = queues[0].splice(0, 1)[0];
+    queues[1].push(movingCard);
+  }
+}
+
+function cardsRemain() {
+  return queues.slice(0,3).reduce((p,x) => x.length > 0 || p, false);
+}
+
+function canDraw() {
+  if (card !== null) { return false; }
+  if (!cardsRemain()) { return false; }
+  return true;
+}
+
+function drawCard() {
+  if (!canDraw()) { return; }
+  refillShortQueue();
+  let chosenQueue = 1;
+  if (Math.random() <= longReviewChance * queues[2].length) { chosenQueue = 2; }
+  if (queues[1].length === 0) { chosenQueue = 2; }
+  const chosenCard = Math.floor(Math.min(cardPullDepth, queues[chosenQueue].length) * Math.random());
+  card = queues[chosenQueue].splice(chosenCard,1)[0];
+  queueOfCard = chosenQueue;
+  answerShown = false;
+  refreshUI();
+}
+
+function canShow() {
+  if (card === null) { return false; }
+  if (answerShown) { return false; }
+  return true;
+}
+
+function showAnswer() {
+  if (!canShow()) { return; }
+  answerShown = true;
+  refreshUI();
+}
+
+function markCard(qualityOfMemory) {
+  // for now, -1, 0, 1 for bad, no move, good, determines target queue
+  if (card === null || (!answerShown)) { return; } // need to drawCard() first
+  if ([-1, 0, 1].findIndex((x) => qualityOfMemory === x) === -1) { throw "unexpected"; }
+  queues[Math.max(queueOfCard + qualityOfMemory, 1)].push(card);
+  card = null;
+  queueOfCard = null;
+  answerShown = false;
+  refillShortQueue();
+  if (autoDraw) { drawCard(); }
+  refreshUI();
+}
+
+function refreshUI() {
+  const statusText = "Card counts: pending: " + queues[0].length + ", short: " + queues[1].length + ", long: " + queues[2].length + ", finished: " + queues[3].length;
+  const hintText = (card === null) ? (cardsRemain() ? "Click [Draw]" : "No cards left") : card.data[hintColumnName];
+  const answerText = answerShown ? card.data[answerColumnName] : "?";
+  document.getElementById("status").innerHTML = statusText;
+  document.getElementById("hint").innerHTML = hintText;
+  document.getElementById("answer").innerHTML = answerText;
+  document.getElementById("btdraw").disabled = !canDraw();
+  document.getElementById("btshow").disabled = !canShow();
+  document.getElementById("btmarkwrong").disabled = !answerShown;
+  document.getElementById("btmarknomove").disabled = !answerShown;
+  document.getElementById("btmarkgood").disabled = !answerShown;
+}
+
+function parseCsv(csv, colSep, rowSep) {
+  const allRowStrings = csv.split(rowSep);
+  if (allRowStrings.length < 1) { return null; }
+  const columnNames = allRowStrings[0].split(colSep);
+  const dataRows = allRowStrings.slice(1);
+  const dataItems = dataRows.map((row) => {
+    const columnData = row.split(colSep);
+    if (columnData.length !== columnNames.length) { return null; }
+    const dataItem = {};
+    for (let i = 0; i < columnNames.length; i++) {
+      dataItem[columnNames[i]] = columnData[i];
+    }
+    return dataItem;
+  });
+  return dataItems.filter((x) => x !== null);
+}
+
+function addDataFromTextArea() {
+  const textArea = document.getElementById("adddatatextarea");
+  const text = textArea.value;
+  textArea.value = "";
+  const dataItems = parseCsv(text, csvColSep, csvRowSep);
+  
+  const cards = dataItems.map((item, index) => { return { data: item }; });
+  queues[0] = queues[0].concat(cards);
+  refreshUI();
+}
+    </script>
+    
+    <style>
+      #status { background-color: #eeeeee; }
+      #hint { background-color: #eeeeff; }
+      #answer { background-color: #ffffee; }
+      #btshow { background-color: #ffffcc; }
+      #btmarkwrong { background-color: #ffcccc; }
+      #btmarkgood { background-color: #ccffcc; }
+    </style>
+    
+  </head>
+  
+  <body>
+    <div id="status"></div>
+    <div id="hint"></div>
+    <div id="answer"></div>
+    <button id="btdraw">Draw</button>
+    <button id="btshow">Show (Z)</button>
+    <button id="btmarkwrong">✖ (X)</button>
+    <button id="btmarkgood">◯ (C)</button>
+    <button id="btmarknomove">Keep</button>
+    
+    <hr/>
+    <textarea id="adddatatextarea"></textarea>
+    <br/>
+    <button id="btadddata">Add Data</button>
+  </body>
+</html>
